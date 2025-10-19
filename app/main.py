@@ -10,6 +10,18 @@ from sqlalchemy.orm import Session
 clients = []
 app = FastAPI()
 
+
+@app.lifespan("startup")
+async def start_background_tasks():
+
+    print("Iniciando o banco de dados")
+    
+    await init()
+    await create()
+    asyncio.create_task()
+
+    print("Banco de dados iniciado")
+
 @app.websocket("/wsmanager/")
 async def wsocket(websocket: WebSocket, session: Session = Depends(get_session)):
     await manager.connect(websocket)
