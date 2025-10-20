@@ -9,8 +9,8 @@ table_registry = registry()
 class User:
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, init=False)
     name: Mapped[str] = mapped_column(String(100))
-    connected: Mapped[bool]
+    connected: Mapped[bool] = mapped_column(default=False)
     connected_at: Mapped[datetime] = mapped_column(init=False, server_default=func.now())
     disconnected_at: Mapped[Optional[datetime]] = mapped_column(default=None)
