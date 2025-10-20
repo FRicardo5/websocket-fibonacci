@@ -1,42 +1,45 @@
-from fastapi import WebSocket, FastAPI, Depends
-from app.wsmanager import manager
-from datetime import datetime
+from fastapi import WebSocket, FastAPI
+from app.server import WSManagerServer
+from app.database.database import init
 import asyncio
-import uuid
-from app.database.database import create, init, get_session
-from app.database.models.user import User
-from sqlalchemy.orm import Session
+import logging
+from contextlib import asynccontextmanager
+from app.database.database import get_session
 
-clients = []
-app = FastAPI()
+# logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+manager = WSManagerServer()
 
-@app.lifespan("startup")
-async def start_background_tasks():
-
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     print("Iniciando o banco de dados")
-    
-    await init()
-    await create()
-    asyncio.create_task()
-
+    session = next(get_session())
+    init()
+    asyncio.create_task(manager.timer_send(session))
     print("Banco de dados iniciado")
+    yield
+    print("Finalizando aplicação")
+
+app = FastAPI(lifespan=lifespan)
 
 @app.websocket("/wsmanager/")
-async def wsocket(websocket: WebSocket, session: Session = Depends(get_session)):
-    await manager.connect(websocket)
+async def websocket_endpoint(websocket: WebSocket):
+    session = next(get_session())
+    client_id = await manager.connect(websocket, session)
 
-    contador = session.query(User).count()
-    client_id = contador + 1
-    clients.append({"id": client_id, "websocket": websocket})
+    try:
+        await websocket.send_json({
+            "type": "welcome",
+            "message": "Conectado ao servidor WebSocket",
+            "client_id": client_id
+        })
 
-    user = User(name=f"User_{client_id}", connected=True)
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    client_id = user.id
+        while True:
+            message = await websocket.receive_text()
+            await manager.handle_message(client_id, message, session)
 
-
-
-
-
+    except Exception as e:
+        print(f"Erro na conexão WebSocket: {e}")
+        await manager.disconnect(client_id, session)
